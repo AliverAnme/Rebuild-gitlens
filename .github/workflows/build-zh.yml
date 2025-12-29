@@ -111,7 +111,7 @@ jobs:
               id: translate
               run: |
                 echo "开始翻译文件..."
-                python3 source-repo/scripts/translate.py --key DEEPSEEK_API_KEY
+                python3 source-repo/scripts/translation.py --key DEEPSEEK_API_KEY
               
             - name: Remove source-repo
               run: |
