@@ -1,0 +1,32 @@
+diff --git a/src/plus/gk/utils/checkin.utils.ts b/src/plus/gk/utils/checkin.utils.ts
+index 515a8c67e..6de4ffc2d 100644
+--- a/src/plus/gk/utils/checkin.utils.ts
++++ b/src/plus/gk/utils/checkin.utils.ts
+@@ -154,10 +154,25 @@ export function getSubscriptionFromCheckIn(
+ 		activeOrganization = organizationsWithNoLicense[0];
+ 	}
+ 
++	const enterprisePlan = getSubscriptionPlan(
++		'enterprise',
++		false,
++		0,
++		undefined,
++		data.user.firstGitLensCheckIn != null
++			? new Date(data.user.firstGitLensCheckIn)
++			: data.user.createdDate != null
++			? new Date(data.user.createdDate)
++			: undefined,
++		undefined,
++		undefined,
++		data.nextOptInDate,
++	);
++
+ 	return {
+ 		plan: {
+-			actual: actual,
+-			effective: effective,
++			actual: enterprisePlan,
++			effective: enterprisePlan,
+ 		},
+ 		account: account,
+ 		activeOrganization: activeOrganization,
