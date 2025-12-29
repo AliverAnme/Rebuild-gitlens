@@ -19,8 +19,8 @@ PROGRESS_FILE = "translation_progress.json"
 GITHUB_ACTIONS = os.environ.get('GITHUB_ACTIONS', 'false').lower() == 'true'
 VERBOSE = os.environ.get('VERBOSE', 'false').lower() == 'true'
 
-PACKAGE_JSON_PATH = "package.json"
-CONTRIBUTIONS_JSON_PATH = "vscode-gitlens/contributions.json"
+PACKAGE_JSON_PATH = "../package.json"
+CONTRIBUTIONS_JSON_PATH = "../contributions.json"
 
 
 def log(msg: str):
