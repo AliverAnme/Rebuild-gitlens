@@ -13,8 +13,8 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 TARGET_LANGUAGE = "Chinese"
 API_TEMPERATURE = 0.3
 
-DICTIONARY_FILE = "translation_dictionary.json"
-PROGRESS_FILE = "translation_progress.json"
+DICTIONARY_FILE = "source-repo/scripts/translation_dictionary.json"
+PROGRESS_FILE = "source-repo/scripts/translation_progress.json"
 
 GITHUB_ACTIONS = os.environ.get('GITHUB_ACTIONS', 'false').lower() == 'true'
 VERBOSE = os.environ.get('VERBOSE', 'false').lower() == 'true'
@@ -59,7 +59,7 @@ def get_api_key():
 
 class TranslationDictionary:
     def __init__(self, file_path: str):
-        self.file_path = file_path
+        self.file_path = Path(file_path)
         self.dictionary = {}
         self.load()
 
