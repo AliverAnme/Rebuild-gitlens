@@ -112,10 +112,6 @@ jobs:
               run: |
                 echo "开始翻译文件..."
                 python3 source-repo/scripts/translation.py --key DEEPSEEK_API_KEY
-              
-            - name: Remove source-repo
-              run: |
-                  rm -rf source-repo
 
             - name: Check for changes
               id: changes
@@ -135,19 +131,24 @@ jobs:
                 git config user.name "github-actions[bot]"
                 git config user.email "github-actions[bot]@users.noreply.github.com"
                 
-                git add source-repo/scripts/translation_dictionary.json
+                git add scripts/translation_dictionary.json
                 
                 git status
                 git commit -m "docs: Update translations ($(date '+%Y-%m-%d %H:%M:%S'))"
                 git push
                 
               shell: bash
+              working-directory: /home/runner/work/Rebuild-gitlens/Rebuild-gitlens/source-repo
 
             - name: Install dependencies
               run: pnpm install
 
             - name: Package extension
               run: pnpm package
+
+            - name: Remove source-repo
+              run: |
+                  rm -rf source-repo
 
             - name: Get package name
               run: |
