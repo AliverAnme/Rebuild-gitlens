@@ -62,10 +62,19 @@ jobs:
               run: |
                   git checkout ${{ env.VERSION }}
 
+            - name: 拉取locales和patches
+              uses: actions/checkout@v4
+              with:
+                  repository: ${{ github.repository }}
+                  path: source-repo
+                  sparse-checkout: |
+                    patches
+                  sparse-checkout-cone-mode: false
+
             - name: Apply patches
               run: |
                   echo "Applying patches..."
-                  for patch in patches/*.patch; do
+                  for patch in source-repo/patches/*.patch; do
                       if [ -f "$patch" ]; then
                           echo "Applying patch: $patch"
                           git apply "$patch" || echo "Failed to apply $patch"
