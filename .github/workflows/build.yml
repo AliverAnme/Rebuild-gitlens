@@ -103,7 +103,7 @@ jobs:
             - name: Create GitHub release
               uses: softprops/action-gh-release@v2
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
               with:
                   tag_name: ${{ env.VERSION }}
                   name: GitLens ${{ env.PACKAGE_VERSION }}
