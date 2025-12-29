@@ -116,14 +116,15 @@ jobs:
             - name: Check for changes
               id: changes
               run: |
-                if git diff --quiet; then
+                if git diff --quiet scripts/translation_dictionary.json; then
                   echo "没有翻译变更"
                   echo "has_changes=false" >> $GITHUB_OUTPUT
                 else
                   echo "检测到翻译变更"
                   echo "has_changes=true" >> $GITHUB_OUTPUT
-                  git diff --stat
+                  git diff --stat scripts/translation_dictionary.json
                 fi
+              working-directory: /home/runner/work/Rebuild-gitlens/Rebuild-gitlens/source-repo
 
             - name: Commit and push changes
               if: ${{ steps.changes.outputs.has_changes == 'true' }}
