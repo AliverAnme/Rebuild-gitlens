@@ -19,8 +19,8 @@ PROGRESS_FILE = "translation_progress.json"
 GITHUB_ACTIONS = os.environ.get('GITHUB_ACTIONS', 'false').lower() == 'true'
 VERBOSE = os.environ.get('VERBOSE', 'false').lower() == 'true'
 
-PACKAGE_JSON_PATH = "../package.json"
-CONTRIBUTIONS_JSON_PATH = "../contributions.json"
+PACKAGE_JSON_PATH = "package.json"
+CONTRIBUTIONS_JSON_PATH = "contributions.json"
 
 
 def log(msg: str):
@@ -59,7 +59,7 @@ def get_api_key():
 
 class TranslationDictionary:
     def __init__(self, file_path: str):
-        self.file_path = Path(file_path)
+        self.file_path = file_path
         self.dictionary = {}
         self.load()
 
