@@ -2,7 +2,7 @@
 
 自动同步并打包 [gitkraken/vscode-gitlens](https://github.com/gitkraken/vscode-gitlens) 最新 release 版本的工作流。
 
-一个便于个人使用及测试的自动编译环境
+一个便于个人使用及测试的自动编译环境，同时实现了部分汉化
 
 ---
 
