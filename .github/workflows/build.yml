@@ -33,7 +33,7 @@ jobs:
                   fi
                   echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-                  if git rev-parse "refs/tags/${{ env.VERSION }}" >/dev/null 2>&1; then
+                  if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
                       echo "Tag exists..."
                       echo "exists=true" >> $GITHUB_OUTPUT
                       echo "exists=true"
