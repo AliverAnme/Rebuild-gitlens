@@ -19,6 +19,8 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
+              with:
+                fetch-tags: true
 
             - name: Check if tag exists locally
               id: check_tag
@@ -31,19 +33,21 @@ jobs:
                   fi
                   echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-                  if git rev-parse "$VERSION" >/dev/null 2>&1; then
-                      echo "Tag exists, skipping..."
+                  if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+                      echo "Tag exists..."
                       echo "exists=true" >> $GITHUB_OUTPUT
                   else
                       echo "exists=false" >> $GITHUB_OUTPUT
                   fi
 
             - name: Setup node
+              if: steps.check_tag.outputs.exists == 'false'
               uses: actions/setup-node@v4
               with:
                   node-version: '22'
 
             - name: Setup pnpm
+              if: steps.check_tag.outputs.exists == 'false'
               uses: pnpm/action-setup@v3
               with:
                   version: 10
