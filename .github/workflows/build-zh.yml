@@ -39,7 +39,7 @@ jobs:
                   fi
                   echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-                  if git rev-parse "refs/tags/$VERSION"+"_zh" >/dev/null 2>&1; then
+                  if git show-ref --tags --verify "refs/tags/${VERSION}_zh"; then
                       echo "Tag exists, skipping..."
                       echo "exists=true" >> $GITHUB_OUTPUT
                       echo "exists=true"
