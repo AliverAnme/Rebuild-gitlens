@@ -69,7 +69,7 @@ jobs:
             - name: Fetch upstream release
               if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  git fetch https://github.com/gitkraken/vscode-gitlens.git refs/tags/${{ env.VERSION }}:refs/tags/${{ env.VERSION }} --depth=1
+                  git fetch  --force https://github.com/gitkraken/vscode-gitlens.git refs/tags/${{ env.VERSION }}:refs/tags/${{ env.VERSION }} --depth=1
 
             - name: Checkout upstream release
               if: steps.check_tag.outputs.exists == 'false'
