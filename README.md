@@ -15,6 +15,12 @@
 
 ## 触发方式
 
+### 使用
+
+翻译默认使用DeepSeek
+
+配置密钥`DEEPSEEK_API_KEY`、`GIT_TOKEN`
+
 ### 定时触发
 
 工作流默认每天凌晨 0 点自动执行，自动拉取并打包最新 release 版本。
