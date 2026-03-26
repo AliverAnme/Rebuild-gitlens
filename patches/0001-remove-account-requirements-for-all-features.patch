@@ -1,0 +1,180 @@
+From f131e7595a3800cde89867c1d6fb292126bf81a6 Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Thu, 26 Mar 2026 21:39:41 +0800
+Subject: [PATCH 1/3] remove account requirements for all features
+
+---
+ src/plus/gk/organizationService.ts |  5 ++
+ src/plus/gk/subscriptionService.ts | 94 +++++++++++++++++++++---------
+ src/plus/gk/utils/checkin.utils.ts | 19 +++++-
+ 3 files changed, 89 insertions(+), 29 deletions(-)
+
+diff --git a/src/plus/gk/organizationService.ts b/src/plus/gk/organizationService.ts
+index f163acb27..1a72585d2 100644
+--- a/src/plus/gk/organizationService.ts
++++ b/src/plus/gk/organizationService.ts
+@@ -63,6 +63,11 @@ export class OrganizationService implements Disposable {
+ 				if (this._organizations != null) return this._organizations;
+ 			}
+ 
++			if (options?.accessToken === 'Unregistered') {
++				this.updateOrganizations([]);
++				return this._organizations;
++			}
++
+ 			let rsp;
+ 			try {
+ 				rsp = await this.connection.fetchGkApi(
+diff --git a/src/plus/gk/subscriptionService.ts b/src/plus/gk/subscriptionService.ts
+index 4ae456a2b..4a9faeb69 100644
+--- a/src/plus/gk/subscriptionService.ts
++++ b/src/plus/gk/subscriptionService.ts
+@@ -1021,34 +1021,73 @@ export class SubscriptionService implements Disposable {
+ 		this._lastValidatedDate = undefined;
+ 
+ 		try {
+-			const checkInData = {
+-				id: session.account.id,
+-				platform: getPlatform(),
+-				gitlensVersion: this.container.version,
+-				machineId: env.machineId,
+-				sessionId: env.sessionId,
+-				vscodeEdition: env.appName,
+-				vscodeHost: env.appHost,
+-				vscodeVersion: codeVersion,
+-			};
++			let data: GKCheckInResponse;
++			if (session.accessToken === 'Unregistered') {
++				const now = Date.now();
++				const mockDate = createFromDateDelta(new Date(now), { days: -5 });
++				data = {
++					user: {
++						id: 'Unregistered',
++						name: 'Unregistered User',
++						email: 'unregistered@example.com',
++						status: 'activated',
++						createdDate: mockDate.toISOString(),
++					},
++					licenses: {
++						paidLicenses: {
++							'gitlens-pro': {
++								latestStatus: 'active',
++								latestStartDate: mockDate.toISOString(),
++								latestEndDate: createFromDateDelta(mockDate, { years: 10 }).toISOString(),
++								organizationId: organizationId,
++							},
++						},
++						effectiveLicenses: {
++							'gitlens-pro': {
++								latestStatus: 'active',
++								latestStartDate: mockDate.toISOString(),
++								latestEndDate: createFromDateDelta(mockDate, { years: 10 }).toISOString(),
++								organizationId: organizationId,
++							},
++						},
++					},
++				};
++			} else {
++				const checkInData = {
++					id: session.account.id,
++					platform: getPlatform(),
++					gitlensVersion: this.container.version,
++					machineId: env.machineId,
++					sessionId: env.sessionId,
++					vscodeEdition: env.appName,
++					vscodeHost: env.appHost,
++					vscodeVersion: codeVersion,
++				};
+ 
+-			const rsp = await this.connection.fetchGkApi(
+-				'gitlens/checkin',
+-				{
+-					method: 'POST',
+-					body: JSON.stringify(checkInData),
+-				},
+-				{ token: session.accessToken, organizationId: organizationId },
+-			);
++				const rsp = await this.connection.fetchGkApi(
++					'gitlens/checkin',
++					{
++						method: 'POST',
++						body: JSON.stringify(checkInData),
++					},
++					{ token: session.accessToken, organizationId: organizationId },
++				);
+ 
+-			if (!rsp.ok) {
+-				this._getCheckInData = () => Promise.resolve(undefined);
+-				throw new AccountValidationError('Unable to validate account', undefined, rsp.status, rsp.statusText);
++				if (!rsp.ok) {
++					this._getCheckInData = () => Promise.resolve(undefined);
++					throw new AccountValidationError(
++						'Unable to validate account',
++						undefined,
++						rsp.status,
++						rsp.statusText,
++					);
++				}
++
++				data = await rsp.json();
+ 			}
+ 
+ 			this._onDidCheckIn.fire({ force: force });
+ 
+-			const data: GKCheckInResponse = await rsp.json();
+ 			this._getCheckInData = () => Promise.resolve(data);
+ 			this.storeCheckInData(data);
+ 
+@@ -1235,11 +1274,12 @@ export class SubscriptionService implements Disposable {
+ 			scope?.error(ex);
+ 		}
+ 
+-		if (session == null) {
+-			scope?.addExitInfo('No valid session was found');
+-			await this.logoutCore(source);
+-			return session ?? null;
+-		}
++		session ??= {
++			id: 'Unregistered',
++			accessToken: 'Unregistered',
++			account: { label: 'Unregistered', id: 'Unregistered' },
++			scopes: authenticationProviderScopes,
++		};
+ 
+ 		try {
+ 			await this.checkInAndValidate(session, source, { showSlowProgress: createIfNeeded, force: createIfNeeded });
+diff --git a/src/plus/gk/utils/checkin.utils.ts b/src/plus/gk/utils/checkin.utils.ts
+index 27b07dd3c..9161fd254 100644
+--- a/src/plus/gk/utils/checkin.utils.ts
++++ b/src/plus/gk/utils/checkin.utils.ts
+@@ -152,10 +152,25 @@ export function getSubscriptionFromCheckIn(
+ 		activeOrganization = organizationsWithNoLicense[0];
+ 	}
+ 
++	const enterprisePlan = getSubscriptionPlan(
++		'enterprise',
++		false,
++		0,
++		undefined,
++		data.user.firstGitLensCheckIn != null
++			? new Date(data.user.firstGitLensCheckIn)
++			: data.user.createdDate != null
++				? new Date(data.user.createdDate)
++				: undefined,
++		undefined,
++		undefined,
++		data.nextOptInDate,
++	);
++
+ 	return {
+ 		plan: {
+-			actual: actual,
+-			effective: effective,
++			actual: enterprisePlan,
++			effective: enterprisePlan,
+ 		},
+ 		account: account,
+ 		activeOrganization: activeOrganization,
+-- 
+2.53.0
+

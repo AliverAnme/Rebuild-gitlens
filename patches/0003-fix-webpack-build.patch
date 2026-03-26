@@ -1,0 +1,33 @@
+From 1efb1af69c51b73b2c10ca3c895e907bb76aff68 Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Thu, 26 Mar 2026 21:13:03 +0800
+Subject: [PATCH 3/3] fix webpack build
+
+---
+ webpack.config.mjs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/webpack.config.mjs b/webpack.config.mjs
+index 65ae19786..e2b30d633 100644
+--- a/webpack.config.mjs
++++ b/webpack.config.mjs
+@@ -32,6 +32,7 @@ const __dirname = path.dirname(__filename);
+ const { DefinePlugin, optimize, WebpackError } = webpack;
+ 
+ const require = createRequire(import.meta.url);
++const cssnanoPresetAdvancedPath = require.resolve('cssnano-preset-advanced');
+ 
+ const cores = Math.max(Math.floor(availableParallelism() / 6) - 1, 1);
+ const eslintWorker = { max: cores, filesPerWorker: 100 };
+@@ -656,7 +657,7 @@ function getWebviewConfig(webviews, overrides, mode, env) {
+ 							new CssMinimizerPlugin({
+ 								minimizerOptions: {
+ 									preset: [
+-										'cssnano-preset-advanced',
++										cssnanoPresetAdvancedPath,
+ 										{
+ 											autoprefixer: false,
+ 											discardUnused: false,
+-- 
+2.53.0
+
