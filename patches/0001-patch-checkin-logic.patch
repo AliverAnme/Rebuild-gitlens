@@ -1,0 +1,53 @@
+From bd0c05aca993988a7d4ee23943ce75f37d4cb9ac Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Thu, 26 Mar 2026 21:39:41 +0800
+Subject: [PATCH 1/3] patch checkin logic
+
+---
+ src/plus/gk/utils/checkin.utils.ts | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/src/plus/gk/utils/checkin.utils.ts b/src/plus/gk/utils/checkin.utils.ts
+index 27b07dd3c..66169b488 100644
+--- a/src/plus/gk/utils/checkin.utils.ts
++++ b/src/plus/gk/utils/checkin.utils.ts
+@@ -12,7 +12,7 @@ export function getSubscriptionFromCheckIn(
+ 		id: data.user.id,
+ 		name: data.user.name,
+ 		email: data.user.email,
+-		verified: data.user.status === 'activated',
++		verified: true,
+ 		createdOn: data.user.createdDate,
+ 	};
+ 
+@@ -152,10 +152,25 @@ export function getSubscriptionFromCheckIn(
+ 		activeOrganization = organizationsWithNoLicense[0];
+ 	}
+ 
++	const enterprisePlan = getSubscriptionPlan(
++		'enterprise',
++		false,
++		0,
++		undefined,
++		data.user.firstGitLensCheckIn != null
++			? new Date(data.user.firstGitLensCheckIn)
++			: data.user.createdDate != null
++				? new Date(data.user.createdDate)
++				: undefined,
++		undefined,
++		undefined,
++		data.nextOptInDate,
++	);
++
+ 	return {
+ 		plan: {
+-			actual: actual,
+-			effective: effective,
++			actual: enterprisePlan,
++			effective: enterprisePlan,
+ 		},
+ 		account: account,
+ 		activeOrganization: activeOrganization,
+-- 
+2.53.0
+

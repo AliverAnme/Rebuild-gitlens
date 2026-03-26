@@ -1,0 +1,37 @@
+From 53c3369b6a1d74f7e7f0f142fcf4f00920897eaf Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Thu, 26 Mar 2026 21:12:52 +0800
+Subject: [PATCH 2/3] allow unknown models from provider
+
+---
+ src/plus/ai/aiProviderService.ts | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/plus/ai/aiProviderService.ts b/src/plus/ai/aiProviderService.ts
+index 9cf9c022d..5b5fe224f 100644
+--- a/src/plus/ai/aiProviderService.ts
++++ b/src/plus/ai/aiProviderService.ts
+@@ -564,9 +564,18 @@ export class AIProviderService implements AIService, Disposable {
+ 				const models = await this._provider.getModels();
+ 				model = models?.find(m => m.id === modelId);
+ 				if (model == null) {
+-					this._model = undefined;
++					const fallbackModel = models.find(m => m.default) ?? models[0];
++					if (fallbackModel == null || modelId == null) {
++						this._model = undefined;
+ 
+-					return undefined;
++						return undefined;
++					}
++
++					model = {
++						...fallbackModel,
++						id: modelId,
++						name: modelId,
++					};
+ 				}
+ 			}
+ 		} else if (model.id !== this._model?.id) {
+-- 
+2.53.0
+
