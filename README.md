@@ -96,5 +96,4 @@ schedule:
 ## 相关链接
 
 - [vscode-gitlens 官方仓库](https://github.com/gitkraken/vscode-gitlens)
-- [GitLens 官网](https://gitlens.amd.com/)
-- [VSCode Extension 发布指南](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
+- [GitLens 官网](https://www.gitkraken.com/gitlens)
