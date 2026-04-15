@@ -2,7 +2,7 @@
 
 自动同步并打包 [gitkraken/vscode-gitlens](https://github.com/gitkraken/vscode-gitlens) 最新 release 版本的工作流。
 
-一个便于个人使用及测试的自动编译环境，同时实现了部分汉化，实则发现汉化右键菜单等并无大用，遂不再维护汉化
+一个便于个人使用及测试的自动编译环境
 
 ---
 
@@ -14,12 +14,6 @@
 - 自动创建 GitHub Release，包含变更日志
 
 ## 触发方式
-
-### 使用
-
-翻译默认使用DeepSeek
-
-配置密钥`DEEPSEEK_API_KEY`、`GIT_TOKEN`
 
 ### 定时触发
 
