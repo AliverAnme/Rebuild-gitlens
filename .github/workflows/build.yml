@@ -95,7 +95,7 @@ jobs:
             - name: Code formating
               if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  pnpm install --save-dev prettier @prettier/plugin-oxc
+                  pnpm install --save-dev -w prettier @prettier/plugin-oxc
                   npx prettier --write src/plus/gk/utils/checkin.utils.ts
 
             - name: Remove source-repo
