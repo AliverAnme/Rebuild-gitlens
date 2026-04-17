@@ -1,0 +1,44 @@
+From 7cc4d164d71d97d91db67cf75919703ff1ff83a2 Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Fri, 17 Apr 2026 14:08:33 +0800
+Subject: [PATCH 1/2] Hardcode the subscription type to enterprise
+
+---
+ src/plus/gk/utils/checkin.utils.ts | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/src/plus/gk/utils/checkin.utils.ts b/src/plus/gk/utils/checkin.utils.ts
+index 27b07dd3c..9161fd254 100644
+--- a/src/plus/gk/utils/checkin.utils.ts
++++ b/src/plus/gk/utils/checkin.utils.ts
+@@ -152,10 +152,25 @@ export function getSubscriptionFromCheckIn(
+ 		activeOrganization = organizationsWithNoLicense[0];
+ 	}
+ 
++	const enterprisePlan = getSubscriptionPlan(
++		'enterprise',
++		false,
++		0,
++		undefined,
++		data.user.firstGitLensCheckIn != null
++			? new Date(data.user.firstGitLensCheckIn)
++			: data.user.createdDate != null
++				? new Date(data.user.createdDate)
++				: undefined,
++		undefined,
++		undefined,
++		data.nextOptInDate,
++	);
++
+ 	return {
+ 		plan: {
+-			actual: actual,
+-			effective: effective,
++			actual: enterprisePlan,
++			effective: enterprisePlan,
+ 		},
+ 		account: account,
+ 		activeOrganization: activeOrganization,
+-- 
+2.53.0
+
