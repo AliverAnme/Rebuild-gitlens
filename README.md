@@ -68,9 +68,11 @@ schedule:
 | `community-subscription-is-enterprise` | `getCommunitySubscription()` 改为注入已验证企业账户（`Voyager`）并提升至 Enterprise，支持离线与免登录使用 |
 | `checkin-subscription-is-enterprise` | `getSubscriptionFromCheckIn()` 的最终返回值改为 Enterprise 计划，保留真实个人信息 |
 
+> 📘 **要新增一条改动，或上游重构后要修既有规则？完整规程见 [`docs/ADDING-A-CHANGE.md`](./docs/ADDING-A-CHANGE.md)** —— 机制总览、规则契约、扫描原语速查、两个可复制模板、四条铁律、排错速查表。
+
 ### 上游重构后怎么办
 
-脚本失败时会以 `::error file=...::` 标注**具体是哪条规则、哪个函数**找不到锚点，并在 Job Summary 里输出实际生成的 diff。此时只需：
+脚本失败时会以 `::error file=...::` 标注**具体是哪条规则、哪个函数**找不到锚点，并在 Job Summary 里输出实际生成的 diff。完整的「报错 → 原因 → 处置」对照表见 [排错速查表](./docs/ADDING-A-CHANGE.md#9-排错速查表)。此时只需：
 
 1. 打开 `scripts/lib/rules.mjs`，找到报错的规则；
 2. 对照上游新代码调整「从哪里取、写回什么」；
@@ -125,6 +127,7 @@ codium --install-extension gitlens-*.vsix
 
 ## 🔗 相关链接
 
+- [新增 / 维护本地改动指南](./docs/ADDING-A-CHANGE.md)
 - [vscode-gitlens 官方仓库](https://github.com/gitkraken/vscode-gitlens)
 - [GitLens 官网](https://www.gitkraken.com/gitlens)
 
