@@ -13,36 +13,75 @@ on:
             - '.github/workflows/**'
     workflow_dispatch:
 
+permissions:
+    contents: read
+
 jobs:
     validate-patches:
         name: Validate Patches Against Upstream
         runs-on: ubuntu-latest
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
               with:
                   path: current-repo
 
             - name: Get latest upstream version
               id: upstream_version
+              env:
+                  GH_TOKEN: ${{ github.token }}
               run: |
-                  VERSION=$(curl -s https://api.github.com/repos/gitkraken/vscode-gitlens/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-                  echo "Latest upstream version: $VERSION"
-                  echo "VERSION=$VERSION" >> $GITHUB_ENV
+                  set -euo pipefail
+
+                  version=$(gh api repos/gitkraken/vscode-gitlens/releases/latest --jq '.tag_name')
+                  if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+                      echo "::error::Could not resolve the latest upstream release (got '$version')."
+                      exit 1
+                  fi
+
+                  echo "Latest upstream version: $version"
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
 
             - name: Fetch upstream release
+              env:
+                  VERSION: ${{ steps.upstream_version.outputs.version }}
               run: |
-                  git clone --depth 1 --branch ${{ env.VERSION }} https://github.com/gitkraken/vscode-gitlens.git upstream-repo
+                  set -euo pipefail
+                  git clone --depth 1 --branch "$VERSION" \
+                      https://github.com/gitkraken/vscode-gitlens.git upstream-repo
 
             - name: Test apply patches
+              env:
+                  VERSION: ${{ steps.upstream_version.outputs.version }}
               run: |
-                  echo "Testing patch application on upstream ${{ env.VERSION }}..."
+                  set -euo pipefail
+                  shopt -s nullglob
+
+                  # Resolve to absolute paths before cd-ing, so the glob can't be re-evaluated
+                  # against the wrong directory.
+                  patches=("$PWD"/current-repo/patches/*.patch)
+                  if (( ${#patches[@]} == 0 )); then
+                      echo "::error::No patches found under current-repo/patches."
+                      exit 1
+                  fi
+
+                  echo "Testing patch application on upstream $VERSION..."
+
                   cd upstream-repo
-                  for patch in ../current-repo/patches/*.patch; do
-                      if [ -f "$patch" ]; then
-                          echo "Checking patch: $patch"
-                          git apply --check "$patch" || { echo "❌ Patch validation failed for $patch"; exit 1; }
-                          git apply "$patch"
+                  failed=0
+                  for patch in "${patches[@]}"; do
+                      echo "Checking patch: $(basename "$patch")"
+                      if git apply --verbose "$patch"; then
+                          echo "✅ $(basename "$patch")"
+                      else
+                          echo "::error file=patches/$(basename "$patch")::Patch no longer applies to upstream $VERSION"
+                          failed=1
                       fi
                   done
+
+                  if (( failed )); then
+                      echo "::error::One or more patches no longer apply to upstream $VERSION."
+                      exit 1
+                  fi
+
                   echo "✅ All patches applied successfully!"

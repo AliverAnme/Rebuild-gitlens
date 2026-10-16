@@ -10,118 +10,169 @@ on:
                 required: false
                 type: string
 
+permissions:
+    contents: read
+
+# Serialize sync runs. Two overlapping runs race on the release tag: one creates it while the
+# other has already resolved "tag does not exist", and they would build the same version twice.
+concurrency:
+    group: sync-release
+    cancel-in-progress: false
+
 jobs:
+    resolve:
+        name: Resolve Version
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.resolve.outputs.version }}
+            exists: ${{ steps.resolve.outputs.exists }}
+        steps:
+            - name: Resolve target version
+              id: resolve
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  INPUT_VERSION: ${{ github.event.inputs.version }}
+                  REPO: ${{ github.repository }}
+              run: |
+                  set -euo pipefail
+
+                  version="$INPUT_VERSION"
+                  if [[ -z "$version" ]]; then
+                      echo "No version given, resolving the latest upstream release..."
+                      version=$(gh api repos/gitkraken/vscode-gitlens/releases/latest --jq '.tag_name')
+                  fi
+
+                  # Anchored at both ends on purpose: an unanchored pattern would accept
+                  # things like 'v19.4.0; rm -rf /' straight through validation.
+                  if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+                      echo "::error::Could not resolve a valid target version (got '$version')."
+                      exit 1
+                  fi
+
+                  echo "Resolved version: $version"
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
+
+                  # matching-refs answers 200 with an empty list when nothing matches, so an
+                  # auth or rate-limit failure stays a hard error instead of looking like
+                  # "tag not found" and sending us off to build a release that already exists.
+                  refs=$(gh api "repos/$REPO/git/matching-refs/tags/$version" --jq '.[].ref')
+                  if grep -qx "refs/tags/$version" <<< "$refs"; then
+                      echo "Tag $version already exists in this repository."
+                      echo "exists=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "Tag $version has not been built yet."
+                      echo "exists=false" >> "$GITHUB_OUTPUT"
+                  fi
+
     sync-release:
         name: Sync Release
+        needs: resolve
+        if: needs.resolve.outputs.exists == 'false'
         runs-on: ubuntu-latest
         permissions:
             contents: write
+        env:
+            VERSION: ${{ needs.resolve.outputs.version }}
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
               with:
-                fetch-tags: true
-                fetch-depth: 0
-
-            - name: Check if tag exists locally
-              id: check_tag
-              run: |
-                  if [ -n "${{ github.event.inputs.version }}" ]; then
-                      VERSION="${{ github.event.inputs.version }}"
-                  else
-                      VERSION=$(curl -s https://api.github.com/repos/gitkraken/vscode-gitlens/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-                      echo "Latest version: $VERSION"
-                  fi
-                  echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-                  if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-                      echo "Tag exists..."
-                      echo "exists=true" >> $GITHUB_OUTPUT
-                      echo "exists=true"
-                  else
-                      echo "exists=false" >> $GITHUB_OUTPUT
-                      echo "exists=false"
-                  fi
+                  fetch-tags: true
+                  fetch-depth: 0
 
             - name: Setup node
-              if: steps.check_tag.outputs.exists == 'false'
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
-                  node-version: '22'
+                  # Upstream declares engines.node ">= 24"
+                  node-version: '24'
 
             - name: Setup pnpm
-              if: steps.check_tag.outputs.exists == 'false'
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
               with:
-                  version: 10
-
-            - name: Exit if tag exists
-              if: steps.check_tag.outputs.exists == 'true'
-              run: |
-                  echo "Tag ${{ env.VERSION }} already exists, exiting."
-                  exit 0
+                  # Upstream declares engines.pnpm ">= 11" and packageManager pnpm@11
+                  version: '11'
 
             - name: Fetch upstream release
-              if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  git fetch https://github.com/gitkraken/vscode-gitlens.git refs/tags/${{ env.VERSION }}:refs/tags/${{ env.VERSION }} --depth=1
+                  set -euo pipefail
+                  # The leading "+" is load-bearing. "Checkout code" runs with fetch-tags: true, so a
+                  # tag of the same name may already exist locally, pointing at our own repo's
+                  # commit. A non-forced refspec is then rejected outright with "would clobber
+                  # existing tag" and this step dies with a misleading error.
+                  git fetch https://github.com/gitkraken/vscode-gitlens.git \
+                      "+refs/tags/$VERSION:refs/tags/$VERSION" --depth=1
 
             - name: Checkout upstream release
-              if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  git checkout ${{ env.VERSION }}
+                  set -euo pipefail
+                  git checkout "$VERSION"
 
-            - name: 拉取patches
-              if: steps.check_tag.outputs.exists == 'false'
-              uses: actions/checkout@v4
+            - name: Fetch patches
+              uses: actions/checkout@v7
               with:
                   repository: ${{ github.repository }}
                   path: source-repo
                   sparse-checkout: |
-                    patches
+                      patches
                   sparse-checkout-cone-mode: false
 
             - name: Apply patches
-              if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  echo "Applying patches..."
-                  for patch in source-repo/patches/*.patch; do
-                      if [ -f "$patch" ]; then
-                          echo "Applying patch: $patch"
-                          git apply "$patch" || { echo "❌ Failed to apply $patch"; exit 1; }
+                  set -euo pipefail
+                  shopt -s nullglob
+
+                  patches=(source-repo/patches/*.patch)
+                  if (( ${#patches[@]} == 0 )); then
+                      echo "::error::No patches found under source-repo/patches."
+                      exit 1
+                  fi
+
+                  failed=0
+                  for patch in "${patches[@]}"; do
+                      echo "Applying patch: $patch"
+                      if git apply --verbose "$patch"; then
+                          echo "✅ Applied $patch"
+                      else
+                          # Collect and keep going: one run then reports every patch that has
+                          # gone stale, instead of only the first one.
+                          echo "::error file=patches/$(basename "$patch")::Patch does not apply to upstream $VERSION"
+                          failed=1
                       fi
                   done
 
+                  if (( failed )); then
+                      echo "::error::One or more patches no longer apply to upstream $VERSION."
+                      exit 1
+                  fi
+
             - name: Remove source-repo
-              if: steps.check_tag.outputs.exists == 'false'
               run: |
+                  set -euo pipefail
                   rm -rf source-repo
 
             - name: Install dependencies
-              if: steps.check_tag.outputs.exists == 'false'
               run: pnpm install
 
             - name: Fix formatting with oxfmt
-              if: steps.check_tag.outputs.exists == 'false'
-              run: npx --yes oxfmt --write src/plus/gk/utils/checkin.utils.ts src/plus/gk/utils/subscription.utils.ts
+              run: pnpm exec oxfmt --write src/plus/gk/utils/checkin.utils.ts src/plus/gk/utils/subscription.utils.ts
 
             - name: Package extension
-              if: steps.check_tag.outputs.exists == 'false'
               run: pnpm package
 
             - name: Get package name
-              if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  echo "PACKAGE_NAME=$(node -e "console.log(require('./package.json').name + '-' + require('./package.json').version + '.vsix')")" >> $GITHUB_ENV
-                  echo "PACKAGE_VERSION=$(node -e "console.log(require('./package.json').version)")" >> $GITHUB_ENV
+                  set -euo pipefail
+                  name=$(node -p "require('./package.json').name")
+                  version=$(node -p "require('./package.json').version")
+                  echo "PACKAGE_NAME=${name}-${version}.vsix" >> "$GITHUB_ENV"
+                  echo "PACKAGE_VERSION=${version}" >> "$GITHUB_ENV"
 
             - name: Generate Checksum
-              if: steps.check_tag.outputs.exists == 'false'
               run: |
-                  sha256sum "./${{ env.PACKAGE_NAME }}" > "./${{ env.PACKAGE_NAME }}.sha256"
+                  set -euo pipefail
+                  sha256sum "$PACKAGE_NAME" > "$PACKAGE_NAME.sha256"
 
             - name: Generate Changelog
-              if: steps.check_tag.outputs.exists == 'false'
               id: changelog
               uses: mindsers/changelog-reader-action@v2
               with:
@@ -129,10 +180,9 @@ jobs:
                   path: ./CHANGELOG.md
 
             - name: Create GitHub release
-              if: steps.check_tag.outputs.exists == 'false'
-              uses: softprops/action-gh-release@v2
+              uses: softprops/action-gh-release@v3
               env:
-                  GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+                  GITHUB_TOKEN: ${{ github.token }}
               with:
                   tag_name: ${{ env.VERSION }}
                   name: GitLens ${{ env.PACKAGE_VERSION }}
@@ -140,5 +190,20 @@ jobs:
                   draft: false
                   prerelease: false
                   files: |
-                    ./${{ env.PACKAGE_NAME }}
-                    ./${{ env.PACKAGE_NAME }}.sha256
+                      ./${{ env.PACKAGE_NAME }}
+                      ./${{ env.PACKAGE_NAME }}.sha256
+
+            - name: Report failure
+              if: failure()
+              run: |
+                  {
+                      echo "## ❌ 构建失败"
+                      echo ""
+                      echo "上游版本: \`$VERSION\`"
+                      echo ""
+                      echo "常见原因:"
+                      echo ""
+                      echo "1. \`patches/*.patch\` 无法应用到上游新版本 —— 上游改动或插入了补丁附近的代码,补丁上下文失效,需要重新生成补丁"
+                      echo "2. 上游提高了工具链要求 —— 对照上游 \`package.json\` 的 \`engines\` 字段与工作流里的 Node / pnpm 版本"
+                      echo "3. \`pnpm install\` 或 \`pnpm package\` 失败 —— 上游依赖或构建脚本有变动"
+                  } >> "$GITHUB_STEP_SUMMARY"
