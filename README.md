@@ -16,12 +16,12 @@
 
 ## 📖 这是什么
 
-一个 GitHub Actions 工作流，自动同步 [gitkraken/vscode-gitlens](https://github.com/gitkraken/vscode-gitlens) 的最新 release，应用 `patches/` 目录下的本地补丁，构建出可直接安装的 `.vsix` 文件及 SHA-256 校验和，并自动发布到本仓库的 [Releases](https://github.com/aliveranme/Rebuild-gitlens/releases)。
+一个 GitHub Actions 工作流，自动同步 [gitkraken/vscode-gitlens](https://github.com/gitkraken/vscode-gitlens) 的最新 release，应用本仓库的本地改动（结构化改写脚本），构建出可直接安装的 `.vsix` 文件及 SHA-256 校验和，并自动发布到本仓库的 [Releases](https://github.com/aliveranme/Rebuild-gitlens/releases)。
 
 ## ⚙️ 工作流机制
 
 1. **同步上游版本** — 从 `gitkraken/vscode-gitlens` 拉取指定 tag 或最新 release。
-2. **应用本地补丁** — 严格校验并应用 `patches/*.patch`，具备 Fail-Fast 异常中断机制。
+2. **应用本地改动** — 运行 `scripts/apply-patches.mjs`，按**函数名**定位并重写目标函数，具备 Fail-Fast 异常中断机制。
 3. **构建扩展包** — 执行 `pnpm install`、`oxfmt` 代码规范化与 `pnpm package` 编译。
 4. **发布 Release** — 计算 SHA-256 校验和，上传 `.vsix`、`.sha256` 与上游 CHANGELOG。
 
@@ -49,14 +49,42 @@ schedule:
 - **SHA-256 校验和**：`gitlens-{version}.vsix.sha256`
 - **GitHub Release**：包含安装文件、校验和与上游完整变更日志
 
-## 🛠️ 补丁特性说明
+## 🛠️ 本地改动说明
 
-`patches/` 目录下的补丁会在构建前自动应用：
+改动不再以 `.patch` 形式存放 —— 传统的 `git apply` 补丁会把每处改动**周围的代码**一起锁进 hunk 上下文，上游只要在目标函数旁插入或重排代码，整个补丁就会失效（这正是历史上反复需要「重新生成补丁」的原因）。
 
-| 补丁 | 作用说明 |
+现在改为 `scripts/` 下的结构化改写脚本：
+
+| 文件 | 作用 |
 |------|------|
-| `fix-checkin.patch` | 调整登录用户的 Check-in 订阅校验返回值，保留真实个人信息并自动提升至 Enterprise 级别 |
-| `fix-subscription.patch` | 适配 GitLens 19 全新架构，解除 Commit Graph 强制登录限制（Bypass sign-in），注入默认已验证企业账户（`Voyager`）支持离线与免登录使用 |
+| `scripts/apply-patches.mjs` | 入口：定位上游 checkout、应用全部改动、生成 diff 与汇总；`--check` 为只读校验模式 |
+| `scripts/lib/codemod.mjs` | 无依赖的 TS 扫描原语：代码掩码、括号配对、按函数名定位函数/形参/顶层 `return`/调用表达式 |
+| `scripts/lib/rules.mjs` | 4 项本地改动规则 |
+
+| 规则 | 作用说明 |
+|------|------|
+| `account-access-not-required` | `isAccountAccessRequired()` 恒返回 `false`，解除 Commit Graph 强制登录限制（Bypass sign-in） |
+| `subscription-state-paid` | `computeSubscriptionState()` 恒返回 `SubscriptionState.Paid`，订阅状态直通付费态 |
+| `community-subscription-is-enterprise` | `getCommunitySubscription()` 改为注入已验证企业账户（`Voyager`）并提升至 Enterprise，支持离线与免登录使用 |
+| `checkin-subscription-is-enterprise` | `getSubscriptionFromCheckIn()` 的最终返回值改为 Enterprise 计划，保留真实个人信息 |
+
+### 上游重构后怎么办
+
+脚本失败时会以 `::error file=...::` 标注**具体是哪条规则、哪个函数**找不到锚点，并在 Job Summary 里输出实际生成的 diff。此时只需：
+
+1. 打开 `scripts/lib/rules.mjs`，找到报错的规则；
+2. 对照上游新代码调整「从哪里取、写回什么」；
+3. 本地验证：
+
+```bash
+# 只校验不写入（CI 用的就是这一步）
+node scripts/apply-patches.mjs --root /path/to/vscode-gitlens --check
+
+# 实际应用并导出 diff 供审阅
+node scripts/apply-patches.mjs --root /path/to/vscode-gitlens --diff local-changes.diff
+```
+
+> 注意：`src/plus/gk/utils/__tests__/subscription.utils.test.ts` 断言的是上游原始订阅状态逻辑，构建流程不运行单测，因此本地改动后该文件仍会失败——这是预期行为。
 
 ## 💻 快速安装指南
 

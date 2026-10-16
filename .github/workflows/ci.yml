@@ -1,15 +1,15 @@
-name: Patch Validation CI
+name: Local Modification Validation
 
 on:
     push:
         branches:
             - main
         paths:
-            - 'patches/**'
+            - 'scripts/**'
             - '.github/workflows/**'
     pull_request:
         paths:
-            - 'patches/**'
+            - 'scripts/**'
             - '.github/workflows/**'
     workflow_dispatch:
 
@@ -17,8 +17,8 @@ permissions:
     contents: read
 
 jobs:
-    validate-patches:
-        name: Validate Patches Against Upstream
+    validate:
+        name: Validate Modifications Against Upstream
         runs-on: ubuntu-latest
         steps:
             - name: Checkout repository
@@ -50,38 +50,36 @@ jobs:
                   git clone --depth 1 --branch "$VERSION" \
                       https://github.com/gitkraken/vscode-gitlens.git upstream-repo
 
-            - name: Test apply patches
+            - name: Apply local modifications
               env:
                   VERSION: ${{ steps.upstream_version.outputs.version }}
               run: |
                   set -euo pipefail
-                  shopt -s nullglob
 
-                  # Resolve to absolute paths before cd-ing, so the glob can't be re-evaluated
-                  # against the wrong directory.
-                  patches=("$PWD"/current-repo/patches/*.patch)
-                  if (( ${#patches[@]} == 0 )); then
-                      echo "::error::No patches found under current-repo/patches."
+                  echo "Applying local modifications to upstream $VERSION..."
+
+                  # Exits non-zero with a `::error file=...::` annotation naming the rule and function that
+                  # could no longer be located, so a stale rule is fixed before it reaches the build.
+                  node current-repo/scripts/apply-patches.mjs \
+                      --root upstream-repo \
+                      --diff "$RUNNER_TEMP/local-changes.diff"
+
+                  echo "✅ All local modifications applied to upstream $VERSION."
+
+            - name: Verify the modifications are idempotent
+              env:
+                  VERSION: ${{ steps.upstream_version.outputs.version }}
+              run: |
+                  set -euo pipefail
+
+                  # A second pass over an already-patched checkout must find every rule already applied
+                  # and change nothing — otherwise re-running the workflow on a warm tree would corrupt it.
+                  output=$(node current-repo/scripts/apply-patches.mjs --root upstream-repo --check)
+                  echo "$output"
+
+                  if ! grep -q "0 modified" <<< "$output"; then
+                      echo "::error::Local modifications are not idempotent — a second pass still rewrote files."
                       exit 1
                   fi
 
-                  echo "Testing patch application on upstream $VERSION..."
-
-                  cd upstream-repo
-                  failed=0
-                  for patch in "${patches[@]}"; do
-                      echo "Checking patch: $(basename "$patch")"
-                      if git apply --verbose "$patch"; then
-                          echo "✅ $(basename "$patch")"
-                      else
-                          echo "::error file=patches/$(basename "$patch")::Patch no longer applies to upstream $VERSION"
-                          failed=1
-                      fi
-                  done
-
-                  if (( failed )); then
-                      echo "::error::One or more patches no longer apply to upstream $VERSION."
-                      exit 1
-                  fi
-
-                  echo "✅ All patches applied successfully!"
+                  echo "✅ Modifications are idempotent on upstream $VERSION."

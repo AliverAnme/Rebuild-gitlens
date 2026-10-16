@@ -107,43 +107,22 @@ jobs:
                   set -euo pipefail
                   git checkout "$VERSION"
 
-            - name: Fetch patches
+            - name: Fetch local modifications
               uses: actions/checkout@v7
               with:
                   repository: ${{ github.repository }}
                   path: source-repo
                   sparse-checkout: |
-                      patches
+                      scripts
                   sparse-checkout-cone-mode: false
 
-            - name: Apply patches
+            - name: Apply local modifications
               run: |
                   set -euo pipefail
-                  shopt -s nullglob
-
-                  patches=(source-repo/patches/*.patch)
-                  if (( ${#patches[@]} == 0 )); then
-                      echo "::error::No patches found under source-repo/patches."
-                      exit 1
-                  fi
-
-                  failed=0
-                  for patch in "${patches[@]}"; do
-                      echo "Applying patch: $patch"
-                      if git apply --verbose "$patch"; then
-                          echo "✅ Applied $patch"
-                      else
-                          # Collect and keep going: one run then reports every patch that has
-                          # gone stale, instead of only the first one.
-                          echo "::error file=patches/$(basename "$patch")::Patch does not apply to upstream $VERSION"
-                          failed=1
-                      fi
-                  done
-
-                  if (( failed )); then
-                      echo "::error::One or more patches no longer apply to upstream $VERSION."
-                      exit 1
-                  fi
+                  # Structural rewrites keyed on function names, not on line numbers, so upstream
+                  # refactors around a target no longer invalidate the build. Writes the resulting
+                  # diff to the job summary for review.
+                  node source-repo/scripts/apply-patches.mjs --root . --diff "$RUNNER_TEMP/local-changes.diff"
 
             - name: Remove source-repo
               run: |
@@ -203,7 +182,7 @@ jobs:
                       echo ""
                       echo "常见原因:"
                       echo ""
-                      echo "1. \`patches/*.patch\` 无法应用到上游新版本 —— 上游改动或插入了补丁附近的代码,补丁上下文失效,需要重新生成补丁"
+                      echo "1. \`scripts/lib/rules.mjs\` 的某项改动找不到锚点 —— 上游重构了对应的函数,需要更新对应规则"
                       echo "2. 上游提高了工具链要求 —— 对照上游 \`package.json\` 的 \`engines\` 字段与工作流里的 Node / pnpm 版本"
                       echo "3. \`pnpm install\` 或 \`pnpm package\` 失败 —— 上游依赖或构建脚本有变动"
                   } >> "$GITHUB_STEP_SUMMARY"

@@ -2,7 +2,7 @@
 * text=auto eol=lf
 
 # Explicitly declare files that must always use LF
-*.patch text eol=lf
+*.mjs text eol=lf
 *.sh text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
