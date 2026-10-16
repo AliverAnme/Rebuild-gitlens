@@ -1,0 +1,13 @@
+{
+	"name": "rebuild-gitlens",
+	"version": "0.0.0",
+	"private": true,
+	"description": "自动同步上游 GitLens release、应用本地改动并打包 vsix 的构建流水线",
+	"type": "module",
+	"scripts": {
+		"test": "node --test scripts/__tests__/*.test.mjs"
+	},
+	"engines": {
+		"node": ">= 20"
+	}
+}
