@@ -21,9 +21,9 @@
 ## ⚙️ 工作流机制
 
 1. **同步上游版本** — 从 `gitkraken/vscode-gitlens` 拉取指定 tag 或最新 release。
-2. **应用本地改动** — 运行 `scripts/apply-patches.mjs`，按**函数名**定位并重写目标函数，具备 Fail-Fast 异常中断机制。
-3. **构建扩展包** — 执行 `pnpm install`、`oxfmt` 代码规范化与 `pnpm package` 编译。
-4. **发布 Release** — 计算 SHA-256 校验和，上传 `.vsix`、`.sha256` 与上游 CHANGELOG。
+2. **应用本地改动** — 运行 `scripts/apply-patches.mjs`，按**函数名**定位并重写目标函数。每条改动都带 `--expect-version`（构建的必须是解析出来的那个版本）与 `--assert-fresh`（这一轮必须把每一条都改到）；任何一条被误判成「已应用」都会让构建变红，而不是悄悄出一个少打补丁的包。
+3. **构建扩展包** — 执行 `pnpm install`、`oxfmt` 代码规范化与 `pnpm package` 编译；编译内部会并行跑 `oxlint --type-aware --type-check --deny-warnings`、依赖检查、l10n 检查与格式检查，任一不过即构建失败。
+4. **发布 Release** — 计算 SHA-256 校验和，附上上游 CHANGELOG 对应版本的条目，并在发布后校验 `.vsix` 与 `.sha256` 确实挂到了 Release 上。
 
 ## 🚀 触发方式
 
@@ -45,9 +45,17 @@ schedule:
 
 ## 📦 输出产物
 
-- **`.vsix` 安装包**：`gitlens-{version}.vsix`
-- **SHA-256 校验和**：`gitlens-{version}.vsix.sha256`
-- **GitHub Release**：包含安装文件、校验和与上游完整变更日志
+以 v19.4.0 为例（文件名里的版本号**不带** `v` 前缀）：
+
+- **`.vsix` 安装包**：`gitlens-19.4.0.vsix`
+- **SHA-256 校验和**：`gitlens-19.4.0.vsix.sha256`
+- **GitHub Release**：包含安装文件、校验和与上游 CHANGELOG 中该版本的条目
+
+下载后可以自校验：
+
+```bash
+sha256sum -c gitlens-19.4.0.vsix.sha256
+```
 
 ## 🛠️ 本地改动说明
 
@@ -58,8 +66,9 @@ schedule:
 | 文件 | 作用 |
 |------|------|
 | `scripts/apply-patches.mjs` | 入口：定位上游 checkout、应用全部改动、生成 diff 与汇总；`--check` 为只读校验模式 |
-| `scripts/lib/codemod.mjs` | 无依赖的 TS 扫描原语：代码掩码、括号配对、按函数名定位函数/形参/顶层 `return`/调用表达式 |
+| `scripts/lib/codemod.mjs` | 无依赖的 TS 扫描原语：代码掩码、括号配对、按函数名定位函数/形参/顶层 `return`/调用表达式/对象顶层属性 |
 | `scripts/lib/rules.mjs` | 4 项本地改动规则 |
+| `scripts/__tests__/` | 零依赖单测（`node --test scripts/__tests__/*.test.mjs`） |
 
 | 规则 | 作用说明 |
 |------|------|
@@ -68,7 +77,11 @@ schedule:
 | `community-subscription-is-enterprise` | `getCommunitySubscription()` 改为注入已验证企业账户（`Voyager`）并提升至 Enterprise，支持离线与免登录使用 |
 | `checkin-subscription-is-enterprise` | `getSubscriptionFromCheckIn()` 的最终返回值改为 Enterprise 计划，保留真实个人信息 |
 
-> 📘 **要新增一条改动，或上游重构后要修既有规则？完整规程见 [`docs/ADDING-A-CHANGE.md`](./docs/ADDING-A-CHANGE.md)** —— 机制总览、规则契约、扫描原语速查、两个可复制模板、四条铁律、排错速查表。
+每条改写都会在被改的函数体里留下一个**哨兵标记**（如 `// local-change:checkin-subscription-is-enterprise`），`isApplied()` 只认这个标记。于是「这条改动到底有没有打上」是一个**事实**，而不是「代码看起来像不像」的推断 —— 这正是本仓库最需要防的那类故障：构建全绿、产物却少了一条补丁。
+
+两侧的不变量由脚本直接断言：全新 checkout 必须 `4 modified, 0 already applied`（`--assert-fresh`），二次运行必须 `0 modified, 4 already applied`（`--assert-applied`）；命令行参数写错（缺值、`--check` 与 `--diff` 同用、未知参数）会立刻 exit 1，而不是静默按默认值跑。
+
+> 📘 **要新增一条改动，或上游重构后要修既有规则？完整规程见 [`docs/ADDING-A-CHANGE.md`](./docs/ADDING-A-CHANGE.md)** —— 机制总览、规则契约、扫描原语速查、两个可复制模板、五条铁律、排错速查表、重新发布与回滚 runbook。
 
 ### 上游重构后怎么办
 
@@ -79,11 +92,15 @@ schedule:
 3. 本地验证：
 
 ```bash
-# 只校验不写入（CI 用的就是这一步）
+# 只校验不写入
 node scripts/apply-patches.mjs --root /path/to/vscode-gitlens --check
 
 # 实际应用并导出 diff 供审阅
 node scripts/apply-patches.mjs --root /path/to/vscode-gitlens --diff local-changes.diff
+
+# 幂等 + 单测（CI 的两道闸门）
+node scripts/apply-patches.mjs --root /path/to/vscode-gitlens --check --assert-applied
+node --test scripts/__tests__/*.test.mjs
 ```
 
 > 注意：`src/plus/gk/utils/__tests__/subscription.utils.test.ts` 断言的是上游原始订阅状态逻辑，构建流程不运行单测，因此本地改动后该文件仍会失败——这是预期行为。
@@ -122,8 +139,16 @@ codium --install-extension gitlens-*.vsix
 ## ⚠️ 使用提示
 
 - 手动指定版本号必须以 `v` 开头（例如 `v19.0.1`）
-- 若仓库已存在对应 tag，工作流会自动跳过避免重复打包
-- 产物仅供个人测试与学习研究使用
+- 若仓库已存在对应 tag，工作流会**整体跳过**这次构建（避免重复打包），因此已发布的坏版本不会因为重跑而自愈
+- 要重发某个版本，先删掉 Release 与 tag 再触发：
+
+```bash
+gh release delete v19.4.0 -R aliveranme/Rebuild-gitlens --cleanup-tag --yes
+gh workflow run "Fix gitlens and build" -R aliveranme/Rebuild-gitlens -f version=v19.4.0
+```
+
+- 重发前后的文件名与版本号完全相同，只有 `.sha256` 内容不同 —— 已下载的用户请用校验和确认自己手里的是哪一版
+- 侧载的扩展不会自动更新，升级时需要重新下载安装；产物仅供个人测试与学习研究使用
 
 ## 🔗 相关链接
 
