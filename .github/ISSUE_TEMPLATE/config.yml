@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+    - name: 📦 上游 GitLens 本身的问题
+      url: https://github.com/gitkraken/vscode-gitlens/issues
+      about: 与本地改动无关的功能缺陷、崩溃、性能问题请提给上游仓库
+    - name: 📘 想新增或修改一条本地改动
+      url: https://github.com/aliveranme/Rebuild-gitlens/blob/main/docs/ADDING-A-CHANGE.md
+      about: 完整规程：规则契约、扫描原语、模板、排错速查表

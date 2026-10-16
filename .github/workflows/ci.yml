@@ -7,24 +7,60 @@ on:
         paths:
             - 'scripts/**'
             - '.github/workflows/**'
+            - 'docs/**'
+            - 'package.json'
     pull_request:
         paths:
             - 'scripts/**'
             - '.github/workflows/**'
+            - 'docs/**'
+            - 'package.json'
+    schedule:
+        # A second daily run, twelve hours away from the release build: upstream drift shows up here
+        # as a failed validation instead of as a release that cannot be produced at 00:00.
+        - cron: '0 12 * * *'
     workflow_dispatch:
 
 permissions:
     contents: read
 
+# A newer push or PR update supersedes the run in flight; only the release build serializes.
+concurrency:
+    group: validate-modifications-${{ github.ref }}
+    cancel-in-progress: true
+
 jobs:
+    unit-tests:
+        name: Codemod Unit Tests
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: Setup node
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version: '24'
+
+            - name: Run the tests
+              # Hermetic: no network, no upstream checkout, no dependencies. Covers the scanning
+              # primitives, the rules' anchors and markers, the CLI's counting invariants, and the
+              # syntax of the guide's code blocks.
+              run: node --test scripts/__tests__/*.test.mjs
+
     validate:
         name: Validate Modifications Against Upstream
         runs-on: ubuntu-latest
+        timeout-minutes: 20
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   path: current-repo
+                  persist-credentials: false
 
             - name: Get latest upstream version
               id: upstream_version
@@ -58,10 +94,13 @@ jobs:
 
                   echo "Applying local modifications to upstream $VERSION..."
 
-                  # Exits non-zero with a `::error file=...::` annotation naming the rule and function that
-                  # could no longer be located, so a stale rule is fixed before it reaches the build.
+                  # --assert-fresh is the whole point of this job: a rule that reports "already applied"
+                  # on a brand-new upstream checkout has given up silently, and this turns that into a
+                  # red build instead of a release missing one of the local modifications.
                   node current-repo/scripts/apply-patches.mjs \
                       --root upstream-repo \
+                      --expect-version "$VERSION" \
+                      --assert-fresh \
                       --diff "$RUNNER_TEMP/local-changes.diff"
 
                   echo "✅ All local modifications applied to upstream $VERSION."
@@ -72,14 +111,12 @@ jobs:
               run: |
                   set -euo pipefail
 
-                  # A second pass over an already-patched checkout must find every rule already applied
-                  # and change nothing — otherwise re-running the workflow on a warm tree would corrupt it.
-                  output=$(node current-repo/scripts/apply-patches.mjs --root upstream-repo --check)
-                  echo "$output"
-
-                  if ! grep -q "0 modified" <<< "$output"; then
-                      echo "::error::Local modifications are not idempotent — a second pass still rewrote files."
-                      exit 1
-                  fi
+                  # A second pass over an already-patched checkout must recognise every rule and change
+                  # nothing — this asserts that in the exit code instead of grepping the human-readable
+                  # summary, which is what the previous `grep "0 modified"` did.
+                  node current-repo/scripts/apply-patches.mjs \
+                      --root upstream-repo \
+                      --check \
+                      --assert-applied
 
                   echo "✅ Modifications are idempotent on upstream $VERSION."

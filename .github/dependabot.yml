@@ -1,0 +1,15 @@
+version: 2
+updates:
+    # The workflows pin actions to commit SHAs (they run unattended with `contents: write`), so
+    # upgrades have to come from somewhere — this is that somewhere.
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      open-pull-requests-limit: 5
+      commit-message:
+          prefix: 'ci'
+      groups:
+          actions:
+              patterns:
+                  - '*'
